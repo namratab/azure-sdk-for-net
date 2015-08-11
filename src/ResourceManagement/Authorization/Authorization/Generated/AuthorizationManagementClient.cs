@@ -84,6 +84,17 @@ namespace Microsoft.Azure.Management.Authorization
             set { this._longRunningOperationRetryTimeout = value; }
         }
         
+        private IClassicAdministratorOperations _classicAdministrators;
+        
+        /// <summary>
+        /// Get classic administrator details  (see http://TBD for more
+        /// information)
+        /// </summary>
+        public virtual IClassicAdministratorOperations ClassicAdministrators
+        {
+            get { return this._classicAdministrators; }
+        }
+        
         private IPermissionOperations _permissions;
         
         /// <summary>
@@ -122,6 +133,7 @@ namespace Microsoft.Azure.Management.Authorization
         public AuthorizationManagementClient()
             : base()
         {
+            this._classicAdministrators = new ClassicAdministratorOperations(this);
             this._permissions = new PermissionOperations(this);
             this._roleAssignments = new RoleAssignmentOperations(this);
             this._roleDefinitions = new RoleDefinitionOperations(this);
@@ -193,6 +205,7 @@ namespace Microsoft.Azure.Management.Authorization
         public AuthorizationManagementClient(HttpClient httpClient)
             : base(httpClient)
         {
+            this._classicAdministrators = new ClassicAdministratorOperations(this);
             this._permissions = new PermissionOperations(this);
             this._roleAssignments = new RoleAssignmentOperations(this);
             this._roleDefinitions = new RoleDefinitionOperations(this);

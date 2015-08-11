@@ -16,6 +16,7 @@
     <Compile Include="Tests\TestFixtureData.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="SessionRecords\Authorization.Tests.BasicTests\ClassicAdministratorListTests.json" />
     <None Include="SessionRecords\Authorization.Tests.BasicTests\RoleAssignmentAtScopeAndAboveTest.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -40,7 +41,7 @@
     <None Include="SessionRecords\Authorization.Tests.BasicTests\RoleDefinitionsListGetTests.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-	<None Include="SessionRecords\Authorization.Tests.BasicTests\RoleDefinitionCreateTests.json">
+    <None Include="SessionRecords\Authorization.Tests.BasicTests\RoleDefinitionCreateTests.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="SessionRecords\Authorization.Tests.BasicTests\RoleDefinitionUpdateTests.json">

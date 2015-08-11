@@ -37,6 +37,38 @@ namespace Authorization.Tests
         }
 
         [Fact]
+        public void ClassicAdministratorListTests()
+        {
+            using (UndoContext context = UndoContext.Current)
+            {
+                context.Start();
+                var client = testContext.GetAuthorizationManagementClient();
+
+                Assert.NotNull(client);
+                Assert.NotNull(client.HttpClient);
+
+                var allClassicAdmins = client.ClassicAdministrators.List();
+
+                Assert.NotNull(allClassicAdmins);
+                Assert.NotNull(allClassicAdmins.ClassicAdministrators);
+
+                foreach (var classicAdmin in allClassicAdmins.ClassicAdministrators)
+                {
+                    Assert.NotNull(classicAdmin);
+                    Assert.NotNull(classicAdmin.Id);
+                    Assert.True(classicAdmin.Id.Contains("/providers/Microsoft.Authorization/classicAdministrators/"));
+                    Assert.True(classicAdmin.Id.Contains("/subscriptions/" + client.Credentials.SubscriptionId));
+                    Assert.NotNull(classicAdmin.Name);
+                    Assert.NotNull(classicAdmin.Type);
+                    Assert.Equal("Microsoft.Authorization/classicAdministrators", classicAdmin.Type);
+                    Assert.NotNull(classicAdmin.Properties);
+                    Assert.NotNull(classicAdmin.Properties.EmailAddress);
+                    Assert.NotNull(classicAdmin.Properties.Role);                  
+                }
+            }
+        }
+
+        [Fact]
         public void RoleAssignmentByIdTests()
         {
             using (UndoContext context = UndoContext.Current)
