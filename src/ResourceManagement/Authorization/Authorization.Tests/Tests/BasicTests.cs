@@ -32,10 +32,25 @@ namespace Authorization.Tests
     {
         private TestExecutionContext testContext;
         private const int RoleAssignmentPageSize = 20;
+        private const string RESOURCE_TEST_LOCATION = "westus";
+        private const string WEBSITE_RP_VERSION = "2014-04-01";
+
 
         public void SetFixture(TestExecutionContext context)
         {
             testContext = context;
+        }
+
+        public static ResourceManagementClient GetResourceManagementClient()
+        {
+            var client = TestBase.GetServiceClient<ResourceManagementClient>(new CSMTestEnvironmentFactory());
+            if (HttpMockServer.Mode == HttpRecorderMode.Playback)
+            {
+                client.LongRunningOperationInitialTimeout = 0;
+                client.LongRunningOperationRetryTimeout = 0;
+            }
+
+            return client;
         }
 
         [Fact]
@@ -84,7 +99,8 @@ namespace Authorization.Tests
                 
                 var principalId = testContext.Users.ElementAt(4);
 
-                var roleDefinition = client.RoleDefinitions.List().RoleDefinitions.ElementAt(1);
+                var scope = "subscriptions/" + client.Credentials.SubscriptionId;
+                var roleDefinition = client.RoleDefinitions.List(scope, null).RoleDefinitions.ElementAt(1);
                 var newRoleAssignment = new RoleAssignmentCreateParameters()
                 {
                     Properties = new RoleAssignmentProperties()
@@ -94,7 +110,6 @@ namespace Authorization.Tests
                     }
                 };
                 
-                var scope = "subscriptions/" + client.Credentials.SubscriptionId;
                 var assignmentName = GetValueFromTestContext(Guid.NewGuid, Guid.Parse, "AssignmentName");
 
                 var assignmentId = string.Format(
@@ -152,7 +167,7 @@ namespace Authorization.Tests
                 Assert.NotNull(client);
                 Assert.NotNull(client.HttpClient);
 
-                var roleDefinition = client.RoleDefinitions.List().RoleDefinitions.Where(r => r.Properties.Type == "BuiltInRole").Last();
+                var roleDefinition = client.RoleDefinitions.List(scope, null).RoleDefinitions.Where(r => r.Properties.Type == "BuiltInRole").Last();
                 var newRoleAssignment = new RoleAssignmentCreateParameters()
                 {
                     Properties = new RoleAssignmentProperties()
@@ -208,7 +223,7 @@ namespace Authorization.Tests
                 Assert.NotNull(client);
                 Assert.NotNull(client.HttpClient);
 
-                var roleDefinition = client.RoleDefinitions.List().RoleDefinitions.Last();
+                var roleDefinition = client.RoleDefinitions.List(scope, null).RoleDefinitions.Last();
                 var newRoleAssignment = new RoleAssignmentCreateParameters()
                 {
                     Properties = new RoleAssignmentProperties()
@@ -286,7 +301,7 @@ namespace Authorization.Tests
                 principalId = GetValueFromTestContext(() => principalId, Guid.Parse, "PrincipalId");                
 
                 var scope = "subscriptions/" + client.Credentials.SubscriptionId;
-                var roleDefinition = client.RoleDefinitions.List().RoleDefinitions.First();
+                var roleDefinition = client.RoleDefinitions.List(scope, null).RoleDefinitions.First();
 
                 for(int i=0; i<testContext.Users.Count; i++)
                 {
@@ -339,7 +354,7 @@ namespace Authorization.Tests
                 Assert.NotNull(client.HttpClient);
 
                 var scope = "subscriptions/" + client.Credentials.SubscriptionId;
-                var allBuiltInRoles = client.RoleDefinitions.List().RoleDefinitions.Where(r => r.Properties.Type.Equals("BuiltInRole", StringComparison.OrdinalIgnoreCase));
+                var allBuiltInRoles = client.RoleDefinitions.List(scope, null).RoleDefinitions.Where(r => r.Properties.Type.Equals("BuiltInRole", StringComparison.OrdinalIgnoreCase));
                 var allBuiltInRolesList = allBuiltInRoles as IList<RoleDefinition> ?? allBuiltInRoles.ToList();
                 int roleCount = allBuiltInRolesList.Count();
                 int userCount = testContext.Users.Count();
@@ -474,7 +489,7 @@ namespace Authorization.Tests
                 Assert.NotNull(client.HttpClient);
 
                 var scope = "subscriptions/" + client.Credentials.SubscriptionId;
-                var roleDefinition = client.RoleDefinitions.List().RoleDefinitions.First();
+                var roleDefinition = client.RoleDefinitions.List(scope, null).RoleDefinitions.First();
                 
                 // Get user and group and add the user to the group
                 var userId = testContext.Users.First();
@@ -544,14 +559,15 @@ namespace Authorization.Tests
                 Assert.NotNull(client);
                 Assert.NotNull(client.HttpClient);
 
-                var allRoleDefinitions = client.RoleDefinitions.List();
+                var scope = "subscriptions/" + client.Credentials.SubscriptionId;
+                var allRoleDefinitions = client.RoleDefinitions.List(scope, null);
                 
                 Assert.NotNull(allRoleDefinitions);
                 Assert.NotNull(allRoleDefinitions.RoleDefinitions);
 
                 foreach (var roleDefinition in allRoleDefinitions.RoleDefinitions)
                 {
-                    var singleRole = client.RoleDefinitions.Get(roleDefinition.Name);
+                    var singleRole = client.RoleDefinitions.Get(roleDefinition.Name, scope);
                     
                     Assert.NotNull(singleRole);
 
@@ -586,7 +602,7 @@ namespace Authorization.Tests
         }
 
         [Fact]
-        public void RoleDefinitionsListWithFilterTests()
+        public void RoleDefinitionsCustomRoleTests()
         {
             using (UndoContext context = UndoContext.Current)
             {
@@ -596,7 +612,127 @@ namespace Authorization.Tests
                 Assert.NotNull(client);
                 Assert.NotNull(client.HttpClient);
 
-                var ownerRoleDefinition = client.RoleDefinitions.ListWithFilters(
+                var subscriptionScope = "/subscriptions/" + client.Credentials.SubscriptionId;
+                var allRoleDefinitions = client.RoleDefinitions.List(subscriptionScope, null);
+
+                Assert.NotNull(allRoleDefinitions);
+                Assert.NotNull(allRoleDefinitions.RoleDefinitions);
+
+                string resourceGroupName = TestUtilities.GenerateName("csmrg");
+                var resourceClient = GetResourceManagementClient();
+                resourceClient.ResourceGroups.CreateOrUpdate(resourceGroupName,
+                    new Microsoft.Azure.Management.Resources.Models.ResourceGroup {Location = RESOURCE_TEST_LOCATION});
+
+                var resourceGroupScope = subscriptionScope + "/resourcegroups/" + resourceGroupName;
+
+                RoleDefinitionCreateOrUpdateParameters createOrUpdateParams;
+                var roleDefinitionId1 = GetValueFromTestContext(Guid.NewGuid, Guid.Parse, "RoleDefinition1");
+                var roleDefinitionId2 = GetValueFromTestContext(Guid.NewGuid, Guid.Parse, "RoleDefinition2");
+                
+                try
+                {
+                    // Create a custom role definition with subscription scope as assignable scope
+                    createOrUpdateParams = new RoleDefinitionCreateOrUpdateParameters()
+                    {
+                        RoleDefinition = new RoleDefinition()
+                        {
+                            Properties = new RoleDefinitionProperties()
+                            {
+                                RoleName = "CustomRoleName_SubscriptionScope" + roleDefinitionId1,
+                                Description = "CustomRoleDescription_SubscriptionScope",
+                                Permissions = new List<Permission>()
+                                {
+                                    new Permission()
+                                    {
+                                        Actions = new List<string> {"Microsoft.Authorization/*/Read"}
+                                    }
+                                },
+                                AssignableScopes = new List<string>() { subscriptionScope },
+                            },
+                        }
+                    };
+
+                    var roleWithSubscriptionScope = client.RoleDefinitions.CreateOrUpdate(roleDefinitionId1, subscriptionScope, createOrUpdateParams);
+
+                    // Create a custom role definition with resource group scope as assignable scope
+                    createOrUpdateParams = new RoleDefinitionCreateOrUpdateParameters()
+                    {
+                        RoleDefinition = new RoleDefinition()
+                        {
+                            Properties = new RoleDefinitionProperties()
+                            {
+                                RoleName = "CustomRoleName_RGScope" + roleDefinitionId2,
+                                Description = "CustomRoleDescription_RGScope",
+                                Permissions = new List<Permission>()
+                                {
+                                    new Permission()
+                                    {
+                                        Actions = new List<string> {"Microsoft.Authorization/*/Read"}
+                                    }
+                                },
+                                AssignableScopes = new List<string>() { resourceGroupScope },
+                            },
+                        }
+                    };
+
+                    var roleWithResourceGroupScope = client.RoleDefinitions.CreateOrUpdate(roleDefinitionId2, resourceGroupScope, createOrUpdateParams);
+
+                    // Query all roles
+                    var rolesAtSubscriptionScope = client.RoleDefinitions.List(subscriptionScope, null);
+                    var rolesAtRgScope = client.RoleDefinitions.List(resourceGroupScope, null);
+
+                    Assert.NotNull(rolesAtSubscriptionScope);
+                    Assert.NotNull(rolesAtRgScope);
+
+                    var customRolesAtSubscriptionScope = rolesAtSubscriptionScope.RoleDefinitions.Where(r => !r.Properties.Type.Equals("builtinRole", StringComparison.InvariantCultureIgnoreCase));
+                    var customRolesAtRgScope = rolesAtRgScope.RoleDefinitions.Where(r => !r.Properties.Type.Equals("builtinRole", StringComparison.InvariantCultureIgnoreCase));
+
+                    Assert.NotNull(customRolesAtSubscriptionScope);
+                    Assert.NotNull(customRolesAtRgScope);
+                    Assert.True(customRolesAtSubscriptionScope.Any());
+                    Assert.True(customRolesAtRgScope.Any());
+                    // TODO: Not working, needs investigation. Querying at subscription scope should not return custom role created at resourcegroup scope (without the atScopeAndBelow() filter)
+                    Assert.False(customRolesAtSubscriptionScope.Any(r => r.Name == roleDefinitionId2));
+
+                    // Query for role2 at Subscription scope using Name filter, should not return anything
+                    var customRoleSubscriptionScope = client.RoleDefinitions.List(subscriptionScope,
+                        new ListDefinitionFilterParameters
+                        {
+                            RoleName = "CustomRoleName_RGScope" + roleDefinitionId2,
+                        });
+
+                    Assert.NotNull(customRoleSubscriptionScope);
+                    Assert.Empty(customRoleSubscriptionScope.RoleDefinitions);
+
+
+                }
+                finally
+                {
+                    var deleteResult1 = client.RoleDefinitions.Delete(roleDefinitionId1, subscriptionScope);
+                    Assert.NotNull(deleteResult1);
+
+                    var deleteResult2 = client.RoleDefinitions.Delete(roleDefinitionId2, resourceGroupScope);
+                    Assert.NotNull(deleteResult2);
+                }
+
+            }
+        }
+
+        [Fact]
+        public void RoleDefinitionsListWithFilterTests()
+        {
+            using (UndoContext context = UndoContext.Current)
+            {
+                context.Start();
+                var client = testContext.GetAuthorizationManagementClient();
+
+                Assert.NotNull(client);
+                Assert.NotNull(client.HttpClient);
+                
+                var scope = "subscriptions/" + client.Credentials.SubscriptionId;
+
+                var ownerRoleDefinition = client.RoleDefinitions.List(
+                    scope,
                     new ListDefinitionFilterParameters
                     {
                         RoleName = "Owner"
@@ -607,19 +743,18 @@ namespace Authorization.Tests
                 Assert.Equal(1, ownerRoleDefinition.RoleDefinitions.Count);
 
                 // Passsing name as null
-                var allRoleDefinition = client.RoleDefinitions.ListWithFilters(
+                var allRoleDefinition = client.RoleDefinitions.List(
+                    scope,
                     new ListDefinitionFilterParameters
                     {
                         RoleName = null
                     });
 
-                var allRoleDefinitionsByList = client.RoleDefinitions.List();
+                var allRoleDefinitionsByList = client.RoleDefinitions.List(scope, null);
 
                 Assert.NotNull(allRoleDefinition);
                 Assert.NotNull(allRoleDefinition.RoleDefinitions);
                 Assert.Equal(allRoleDefinitionsByList.RoleDefinitions.Count, allRoleDefinition.RoleDefinitions.Count);
-
-                Assert.Throws<ArgumentNullException>(() => client.RoleDefinitions.ListWithFilters(null));
             }
         }
 
@@ -634,14 +769,15 @@ namespace Authorization.Tests
                 Assert.NotNull(client);
                 Assert.NotNull(client.HttpClient);
 
-                var allRoleDefinitions = client.RoleDefinitions.List();
+                var scope = "subscriptions/" + client.Credentials.SubscriptionId;
+                var allRoleDefinitions = client.RoleDefinitions.List(scope, null);
 
                 Assert.NotNull(allRoleDefinitions);
                 Assert.NotNull(allRoleDefinitions.RoleDefinitions);
-
+                
                 foreach (var roleDefinition in allRoleDefinitions.RoleDefinitions)
                 {
-                    var singleRole = client.RoleDefinitions.Get(roleDefinition.Name);
+                    var singleRole = client.RoleDefinitions.Get(roleDefinition.Name, scope);
                     var byIdRole = client.RoleDefinitions.GetById(roleDefinition.Id);
 
                     Assert.NotNull(byIdRole);
@@ -837,10 +973,11 @@ namespace Authorization.Tests
                     Assert.NotNull(deleteResult);
                 }
 
+                var scope = "subscriptions/" + client.Credentials.SubscriptionId;
                 // Negative test - create a roledefinition with same id as a built-in role
                 try
                 {
-                    var allRoleDefinitions = client.RoleDefinitions.List();
+                    var allRoleDefinitions = client.RoleDefinitions.List(scope, null);
                     Assert.NotNull(allRoleDefinitions);
                     Assert.NotNull(allRoleDefinitions.RoleDefinitions);
                     RoleDefinition builtInRole = allRoleDefinitions.RoleDefinitions.First(x => x.Properties.Type == "BuiltInRole");
